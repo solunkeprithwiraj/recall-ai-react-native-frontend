@@ -8,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
@@ -23,6 +22,7 @@ import {
 import { authAPI } from "../lib/api";
 import { storage } from "../lib/storage";
 import { Picker } from "@react-native-picker/picker";
+import { useToast } from "../utils/toast";
 
 const EDUCATION_LEVELS = [
   { value: "elementary", label: "Elementary" },
@@ -42,21 +42,22 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const { showToast } = useToast();
 
   const handleSignup = async () => {
     // Validation
     if (!name.trim() || !email.trim() || !password.trim()) {
-      Alert.alert("Error", "Please fill in all required fields");
+      showToast("Please fill in all required fields", "error");
       return;
     }
 
     if (password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters long");
+      showToast("Password must be at least 6 characters long", "error");
       return;
     }
 
     if (password !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      showToast("Passwords do not match", "error");
       return;
     }
 
@@ -75,18 +76,20 @@ export default function SignupScreen() {
         await storage.setItem("authToken", response.token);
         await storage.setItem("userId", response.user.id);
 
-        Alert.alert("Success", "Account created successfully!", [
-          {
-            text: "OK",
-            onPress: () => router.replace("/(tabs)"),
-          },
-        ]);
+        showToast(
+          "Account created successfully! Welcome to SmartFlash",
+          "success"
+        );
+        // Small delay to show toast before navigation
+        setTimeout(() => {
+          router.replace("/(tabs)");
+        }, 500);
       }
     } catch (error: any) {
-      Alert.alert(
-        "Signup Failed",
+      showToast(
         error.response?.data?.message ||
-          "Failed to create account. Please try again."
+          "Failed to create account. Please try again.",
+        "error"
       );
     } finally {
       setLoading(false);
@@ -101,7 +104,6 @@ export default function SignupScreen() {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
           <MaterialIcons name="person-add" size={64} color={colors.primary} />
@@ -236,7 +238,7 @@ export default function SignupScreen() {
               />
               <Picker
                 selectedValue={educationLevel}
-                style={{ flex: 1, color: colors.text }}
+                style={styles.picker}
                 onValueChange={(itemValue) => setEducationLevel(itemValue)}
                 enabled={!loading}
               >
@@ -285,8 +287,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    justifyContent: "center",
     padding: spacing.lg,
-    paddingTop: spacing.xxl,
   },
   header: {
     alignItems: "center",
@@ -301,7 +303,6 @@ const styles = StyleSheet.create({
   subtitle: {
     ...typography.body,
     color: colors.textSecondary,
-    textAlign: "center",
   },
   form: {
     width: "100%",
@@ -332,8 +333,8 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: "row",
-    gap: spacing.sm,
     marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   halfWidth: {
     flex: 1,
@@ -346,30 +347,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    minHeight: 56,
+    height: 56,
     ...shadows.sm,
   },
-  selectScroll: {
+  picker: {
     flex: 1,
-  },
-  selectChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.surfaceHover,
-    marginRight: spacing.xs,
-  },
-  selectChipActive: {
-    backgroundColor: colors.primary,
-  },
-  selectChipText: {
-    ...typography.caption,
-    color: colors.textSecondary,
-  },
-  selectChipTextActive: {
-    color: colors.surface,
-    fontWeight: "600",
+    color: colors.text,
   },
   button: {
     backgroundColor: colors.primary,

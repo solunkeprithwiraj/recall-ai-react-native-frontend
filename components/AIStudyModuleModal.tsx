@@ -13,6 +13,9 @@ import {
 import { MaterialIcons } from "@expo/vector-icons";
 import { useState } from "react";
 import { studyModuleAPI } from "../lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
+import { useToast } from "../utils/toast";
 import {
   colors,
   spacing,
@@ -45,6 +48,9 @@ export default function AIStudyModuleModal({
   onSuccess,
   userEducationLevel,
 }: AIStudyModuleModalProps) {
+  const queryClient = useQueryClient();
+  const router = useRouter();
+  const { showToast } = useToast();
   const [formData, setFormData] = useState({
     topic: "",
     subject: "",
@@ -105,7 +111,7 @@ export default function AIStudyModuleModal({
 
     try {
       setLoading(true);
-      await studyModuleAPI.generate({
+      const result = await studyModuleAPI.generate({
         topic: formData.topic.trim(),
         subject: formData.subject.trim() || undefined,
         educationLevel: formData.educationLevel || undefined,
@@ -116,31 +122,40 @@ export default function AIStudyModuleModal({
           : undefined,
       });
 
-      Alert.alert("Success", "Study module created successfully!", [
-        {
-          text: "OK",
-          onPress: () => {
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ["study-modules"] });
+      queryClient.invalidateQueries({ queryKey: ["user-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["flashcards"] });
+
+      // Show success toast
+      showToast("Study module created successfully!", "success");
+      
             resetForm();
             onClose();
             if (onSuccess) onSuccess();
-          },
-        },
-      ]);
+      
+            // Redirect to study page with the new module
+            if (result.module?.id) {
+              router.push({
+                pathname: "/(tabs)/study",
+                params: { moduleId: result.module.id },
+              });
+            } else {
+              router.push("/(tabs)/study");
+            }
     } catch (error: any) {
       console.error("Error generating study module:", error);
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
         "Failed to generate study module. Please try again.";
-      const errorTitle =
-        error.response?.status === 503 ? "AI Service Unavailable" : "Error";
-
-      Alert.alert(
-        errorTitle,
-        errorMessage +
-          (error.response?.data?.help ? `\n\n${error.response.data.help}` : ""),
-        [{ text: "OK" }]
-      );
+      
+      // Check for rate limit error
+      if (error.response?.status === 429) {
+        showToast(errorMessage, "warning", 5000);
+      } else {
+        showToast(errorMessage, "error");
+      }
     } finally {
       setLoading(false);
     }

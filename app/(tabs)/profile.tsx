@@ -6,11 +6,15 @@ import {
   Alert,
   StyleSheet,
   ActivityIndicator,
+  Modal,
+  Pressable,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useState, useEffect } from "react";
 import { userAPI, authAPI } from "../../lib/api";
 import { router } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { storage } from "../../lib/storage";
 import {
   colors,
   spacing,
@@ -21,6 +25,7 @@ import {
 } from "../../constants/theme";
 
 export default function ProfileScreen() {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState({
     name: "",
     email: "",
@@ -30,6 +35,38 @@ export default function ProfileScreen() {
     accuracy: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(true); // Default to true, will be checked
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [logoutting, setLogoutting] = useState(false);
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const checkAuth = async () => {
+    const token = await storage.getItem("authToken");
+    setIsAuthenticated(!!token);
+  };
+
+  const performLogout = async () => {
+    setLogoutting(true);
+    try {
+      await authAPI.logout();
+    } catch (error) {
+      console.error("Logout error:", error);
+      // Continue even if API call fails
+    }
+    // Clear React Query cache
+    queryClient.clear();
+    setIsAuthenticated(false);
+    // Ensure storage is cleared
+    await storage.removeItem("authToken");
+    await storage.removeItem("userId");
+    setShowLogoutModal(false);
+    setLogoutting(false);
+    // Navigate to login
+    router.replace("/login");
+  };
 
   useEffect(() => {
     loadProfile();
@@ -98,24 +135,8 @@ export default function ProfileScreen() {
     {
       icon: "logout",
       label: "Logout",
-      onPress: async () => {
-        Alert.alert("Logout", "Are you sure you want to logout?", [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Logout",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await authAPI.logout();
-                router.replace("/login");
-              } catch (error) {
-                console.error("Logout error:", error);
-                // Still redirect to login even if API call fails
-                router.replace("/login");
-              }
-            },
-          },
-        ]);
+      onPress: () => {
+        setShowLogoutModal(true);
       },
       color: colors.error,
     },
@@ -191,48 +212,115 @@ export default function ProfileScreen() {
 
       {/* Menu Items */}
       <View style={styles.menuContainer}>
-        {menuItems.map((item, index) => (
-          <TouchableOpacity
-            key={index}
-            onPress={item.onPress}
-            style={styles.menuItem}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuItemContent}>
-              <View
-                style={[
-                  styles.menuIconContainer,
-                  { backgroundColor: item.color + "15" },
-                ]}
-              >
-                <MaterialIcons
-                  name={item.icon as any}
-                  size={24}
-                  color={item.color}
-                />
+        {menuItems
+          .filter((item) => {
+            // Always show logout if we're on this screen (user must be authenticated to see profile)
+            // But check auth state anyway
+            if (item.label === "Logout") {
+              return true; // Always show, will check auth in onPress
+            }
+            return true;
+          })
+          .map((item, index) => (
+            <TouchableOpacity
+              key={index}
+              onPress={item.onPress}
+              style={styles.menuItem}
+              activeOpacity={0.7}
+              disabled={loading && item.label === "Logout"}
+            >
+              <View style={styles.menuItemContent}>
+                <View
+                  style={[
+                    styles.menuIconContainer,
+                    { backgroundColor: item.color + "15" },
+                  ]}
+                >
+                  <MaterialIcons
+                    name={item.icon as any}
+                    size={24}
+                    color={item.color}
+                  />
+                </View>
+                <Text
+                  style={[
+                    styles.menuItemText,
+                    item.label === "Logout" && styles.logoutText,
+                  ]}
+                >
+                  {item.label}
+                </Text>
               </View>
-              <Text
-                style={[
-                  styles.menuItemText,
-                  item.label === "Logout" && styles.logoutText,
-                ]}
-              >
-                {item.label}
-              </Text>
-            </View>
-            <MaterialIcons
-              name="chevron-right"
-              size={24}
-              color={colors.textTertiary}
-            />
-          </TouchableOpacity>
-        ))}
+              <MaterialIcons
+                name="chevron-right"
+                size={24}
+                color={colors.textTertiary}
+              />
+            </TouchableOpacity>
+          ))}
       </View>
 
       {/* App Version */}
       <View style={styles.versionContainer}>
         <Text style={styles.versionText}>SmartFlash v1.0.0</Text>
       </View>
+
+      {/* Logout Confirmation Modal */}
+      <Modal
+        visible={showLogoutModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => !logoutting && setShowLogoutModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => !logoutting && setShowLogoutModal(false)}
+        >
+          <Pressable
+            style={styles.modalContent}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIconContainer}>
+                <MaterialIcons name="logout" size={32} color={colors.error} />
+              </View>
+              <Text style={styles.modalTitle}>Logout</Text>
+              <Text style={styles.modalMessage}>
+                Are you sure you want to logout? You'll need to sign in again to
+                access your account.
+              </Text>
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => setShowLogoutModal(false)}
+                disabled={logoutting}
+              >
+                <Text style={styles.modalButtonCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonConfirm]}
+                onPress={performLogout}
+                disabled={logoutting}
+              >
+                {logoutting ? (
+                  <ActivityIndicator color={colors.surface} size="small" />
+                ) : (
+                  <>
+                    <MaterialIcons
+                      name="logout"
+                      size={20}
+                      color={colors.surface}
+                    />
+                    <Text style={styles.modalButtonConfirmText}>Logout</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -390,5 +478,76 @@ const styles = StyleSheet.create({
     ...typography.caption,
     textAlign: "center",
     color: colors.textTertiary,
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  modalContent: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    padding: spacing.lg,
+    ...shadows.lg,
+  },
+  modalHeader: {
+    alignItems: "center",
+    marginBottom: spacing.xl,
+  },
+  modalIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.errorBg,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: spacing.md,
+  },
+  modalTitle: {
+    ...typography.h2,
+    color: colors.text,
+    marginBottom: spacing.sm,
+  },
+  modalMessage: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: "center",
+    lineHeight: 22,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+  },
+  modalButtonCancel: {
+    backgroundColor: colors.surfaceHover,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  modalButtonConfirm: {
+    backgroundColor: colors.error,
+    ...shadows.sm,
+  },
+  modalButtonCancelText: {
+    ...typography.bodyBold,
+    color: colors.text,
+  },
+  modalButtonConfirmText: {
+    ...typography.bodyBold,
+    color: colors.surface,
   },
 });

@@ -3,7 +3,9 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useState, useEffect } from "react";
 import { studyAPI, studyModuleAPI } from "../../lib/api";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { colors, spacing, typography, borderRadius, borders, shadows } from "../../constants/theme";
+import { useToast } from "../../utils/toast";
 
 interface Flashcard {
   id: string;
@@ -25,6 +27,8 @@ interface StudyModule {
 export default function StudyScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
+  const queryClient = useQueryClient();
+  const { showToast } = useToast();
   const [isFlipped, setIsFlipped] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
@@ -36,14 +40,22 @@ export default function StudyScreen() {
   const [correctCount, setCorrectCount] = useState(0);
   const [totalStudied, setTotalStudied] = useState(0);
   const [showModuleSelection, setShowModuleSelection] = useState(true);
-  const [modules, setModules] = useState<StudyModule[]>([]);
   const [selectedModuleId, setSelectedModuleId] = useState<string | undefined>(undefined);
   const [selectedModuleTitle, setSelectedModuleTitle] = useState<string>("");
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadModules();
-  }, []);
+  // Use React Query for modules
+  const {
+    data: modules = [],
+    isLoading: modulesLoading,
+    refetch: refetchModules,
+  } = useQuery({
+    queryKey: ["study-modules"],
+    queryFn: async () => {
+      return await studyModuleAPI.getAll();
+    },
+    refetchOnMount: true,
+  });
 
   // Auto-start session if moduleId is provided in params
   useEffect(() => {
@@ -57,15 +69,6 @@ export default function StudyScreen() {
       }
     }
   }, [params.moduleId, modules, sessionId, showModuleSelection, selectedModuleId]);
-
-  const loadModules = async () => {
-    try {
-      const modulesList = await studyModuleAPI.getAll();
-      setModules(modulesList);
-    } catch (error) {
-      console.error("Error loading modules:", error);
-    }
-  };
 
   const startSession = async (moduleId?: string) => {
     try {
@@ -211,16 +214,28 @@ export default function StudyScreen() {
       });
 
       const accuracy = finalCardsStudied > 0 ? Math.round((correctCount / finalCardsStudied) * 100) : 0;
-      Alert.alert(
-        "Session Complete!",
-        `You studied ${finalCardsStudied} cards with ${correctCount} correct answers (${accuracy}% accuracy)!`,
-        [
-          {
-            text: "OK",
-            onPress: () => router.push("/(tabs)/"),
-          },
-        ]
-      );
+      
+      // Check if module was completed (all cards studied)
+      const isModuleCompleted = selectedModuleId && currentIndex === flashcards.length - 1;
+      
+      if (isModuleCompleted) {
+        showToast(
+          `🎉 Module completed! ${finalCardsStudied} cards studied with ${accuracy}% accuracy!`,
+          "success",
+          4000
+        );
+      } else {
+        showToast(
+          `Great work! ${finalCardsStudied} cards studied with ${accuracy}% accuracy!`,
+          "success",
+          3000
+        );
+      }
+      
+      // Navigate to home after a short delay
+      setTimeout(() => {
+        router.push("/(tabs)/");
+      }, isModuleCompleted ? 1500 : 1000);
     } catch (error) {
       console.error("Error ending session:", error);
     }

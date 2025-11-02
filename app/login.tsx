@@ -8,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
   ActivityIndicator,
 } from "react-native";
 import { router } from "expo-router";
@@ -22,16 +21,18 @@ import {
 } from "../constants/theme";
 import { authAPI } from "../lib/api";
 import { storage } from "../lib/storage";
+import { useToast } from "../utils/toast";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const { showToast } = useToast();
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert("Error", "Please fill in all fields");
+      showToast("Please fill in all fields", "error");
       return;
     }
 
@@ -44,14 +45,23 @@ export default function LoginScreen() {
         await storage.setItem("authToken", response.token);
         await storage.setItem("userId", response.user.id);
 
-        // Navigate to main app
-        router.replace("/(tabs)");
+        // Verify storage was successful before navigating
+        const savedToken = await storage.getItem("authToken");
+        if (savedToken) {
+          showToast("Login successful! Welcome back", "success");
+          // Small delay to show toast before navigation
+          setTimeout(() => {
+          router.replace("/(tabs)");
+          }, 500);
+        } else {
+          showToast("Failed to save authentication. Please try again.", "error");
+        }
       }
     } catch (error: any) {
-      Alert.alert(
-        "Login Failed",
+      showToast(
         error.response?.data?.message ||
-          "Invalid email or password. Please try again."
+          "Invalid email or password. Please try again.",
+        "error"
       );
     } finally {
       setLoading(false);

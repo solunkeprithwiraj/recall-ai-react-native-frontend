@@ -10,6 +10,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import { useState, useEffect } from "react";
 import { userAPI, studyAPI, studyModuleAPI } from "../../lib/api";
 import { useRouter } from "expo-router";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   colors,
@@ -22,25 +23,33 @@ import {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [stats, setStats] = useState({
     totalCards: 0,
     studiedToday: 0,
     streak: 0,
     accuracy: 0,
   });
-  const [loading, setLoading] = useState(true);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
-  const [studyModules, setStudyModules] = useState<any[]>([]);
-  const [modulesLoading, setModulesLoading] = useState(false);
 
-  useEffect(() => {
-    loadStats();
-    loadStudyModules();
-  }, []);
+  // Use React Query for study modules
+  const {
+    data: studyModules = [],
+    isLoading: modulesLoading,
+    refetch: refetchModules,
+  } = useQuery({
+    queryKey: ["study-modules"],
+    queryFn: async () => {
+      const modules = await studyModuleAPI.getAll();
+      return modules.slice(0, 3); // Show latest 3 modules
+    },
+    refetchOnMount: true,
+  });
 
-  const loadStats = async () => {
-    try {
-      setLoading(true);
+  // Load stats with React Query
+  const { isLoading: statsLoading, refetch: refetchStats } = useQuery({
+    queryKey: ["user-stats"],
+    queryFn: async () => {
       const [statsData, historyData] = await Promise.all([
         userAPI.getStats(),
         studyAPI.getHistory(),
@@ -56,24 +65,13 @@ export default function HomeScreen() {
       if (historyData.sessions) {
         setRecentActivity(historyData.sessions.slice(0, 5));
       }
-    } catch (error) {
-      console.error("Error loading stats:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const loadStudyModules = async () => {
-    try {
-      setModulesLoading(true);
-      const modules = await studyModuleAPI.getAll();
-      setStudyModules(modules.slice(0, 3)); // Show latest 3 modules
-    } catch (error) {
-      console.error("Error loading study modules:", error);
-    } finally {
-      setModulesLoading(false);
-    }
-  };
+      return { statsData, historyData };
+    },
+    refetchOnMount: true,
+  });
+
+  const loading = statsLoading;
 
   const statsConfig = [
     {
@@ -214,7 +212,7 @@ export default function HomeScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent Modules</Text>
             <TouchableOpacity
-              onPress={loadStudyModules}
+              onPress={() => refetchModules()}
               style={styles.refreshButton}
             >
               <MaterialIcons
