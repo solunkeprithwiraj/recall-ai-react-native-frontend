@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Modal,
 } from "react-native";
 import { router } from "expo-router";
 import { MaterialIcons } from "@expo/vector-icons";
@@ -21,7 +22,6 @@ import {
 } from "../constants/theme";
 import { authAPI } from "../lib/api";
 import { storage } from "../lib/storage";
-import { Picker } from "@react-native-picker/picker";
 import { useToast } from "../utils/toast";
 
 const EDUCATION_LEVELS = [
@@ -42,6 +42,7 @@ export default function SignupScreen() {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showEducationPicker, setShowEducationPicker] = useState(false);
   const { showToast } = useToast();
 
   const handleSignup = async () => {
@@ -229,28 +230,29 @@ export default function SignupScreen() {
               />
             </View>
 
-            <View style={[styles.selectContainer, styles.halfWidth]}>
+            <TouchableOpacity
+              style={[styles.selectContainer, styles.halfWidth]}
+              onPress={() => setShowEducationPicker(true)}
+              disabled={loading}
+            >
               <MaterialIcons
                 name="school"
                 size={20}
                 color={colors.textSecondary}
                 style={styles.inputIcon}
               />
-              <Picker
-                selectedValue={educationLevel}
-                style={styles.picker}
-                onValueChange={(itemValue) => setEducationLevel(itemValue)}
-                enabled={!loading}
-              >
-                {EDUCATION_LEVELS.map((level) => (
-                  <Picker.Item
-                    key={level.value}
-                    label={level.label}
-                    value={level.value}
-                  />
-                ))}
-              </Picker>
-            </View>
+              <Text style={styles.pickerText}>
+                {EDUCATION_LEVELS.find(
+                  (level) => level.value === educationLevel
+                )?.label || "Select Level"}
+              </Text>
+              <MaterialIcons
+                name="keyboard-arrow-down"
+                size={24}
+                color={colors.textSecondary}
+                style={{ marginLeft: "auto" }}
+              />
+            </TouchableOpacity>
           </View>
 
           <TouchableOpacity
@@ -276,6 +278,62 @@ export default function SignupScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Education Level Picker Modal */}
+      <Modal
+        visible={showEducationPicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowEducationPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowEducationPicker(false)}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Education Level</Text>
+              <TouchableOpacity onPress={() => setShowEducationPicker(false)}>
+                <MaterialIcons name="close" size={24} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.modalList}>
+              {EDUCATION_LEVELS.map((level) => (
+                <TouchableOpacity
+                  key={level.value}
+                  style={[
+                    styles.modalOption,
+                    educationLevel === level.value &&
+                      styles.modalOptionSelected,
+                  ]}
+                  onPress={() => {
+                    setEducationLevel(level.value);
+                    setShowEducationPicker(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.modalOptionText,
+                      educationLevel === level.value &&
+                        styles.modalOptionTextSelected,
+                    ]}
+                  >
+                    {level.label}
+                  </Text>
+                  {educationLevel === level.value && (
+                    <MaterialIcons
+                      name="check"
+                      size={24}
+                      color={colors.primary}
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -327,6 +385,9 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text,
     paddingVertical: 0,
+    ...(Platform.OS === "web"
+      ? { outlineStyle: "none" as any, outlineWidth: 0 }
+      : {}),
   },
   eyeIcon: {
     padding: spacing.xs,
@@ -350,8 +411,9 @@ const styles = StyleSheet.create({
     height: 56,
     ...shadows.sm,
   },
-  picker: {
+  pickerText: {
     flex: 1,
+    ...typography.body,
     color: colors.text,
   },
   button: {
@@ -380,6 +442,55 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   linkText: {
+    ...typography.bodyBold,
+    color: colors.primary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: spacing.lg,
+  },
+  modalContent: {
+    backgroundColor: colors.surface,
+    borderRadius: borderRadius.lg,
+    width: "100%",
+    maxWidth: 400,
+    maxHeight: "70%",
+    ...shadows.lg,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  modalTitle: {
+    ...typography.h3,
+    color: colors.text,
+  },
+  modalList: {
+    maxHeight: 400,
+  },
+  modalOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  modalOptionSelected: {
+    backgroundColor: colors.surfaceHover,
+  },
+  modalOptionText: {
+    ...typography.body,
+    color: colors.text,
+  },
+  modalOptionTextSelected: {
     ...typography.bodyBold,
     color: colors.primary,
   },
