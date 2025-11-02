@@ -21,7 +21,7 @@ import {
   shadows,
 } from "../constants/theme";
 import { authAPI } from "../lib/api";
-import * as SecureStore from "expo-secure-store";
+import { storage } from "../lib/storage";
 import { Picker } from "@react-native-picker/picker";
 
 const EDUCATION_LEVELS = [
@@ -72,8 +72,8 @@ export default function SignupScreen() {
 
       if (response.token && response.user) {
         // Store token and user ID
-        await SecureStore.setItemAsync("authToken", response.token);
-        await SecureStore.setItemAsync("userId", response.user.id);
+        await storage.setItem("authToken", response.token);
+        await storage.setItem("userId", response.user.id);
 
         Alert.alert("Success", "Account created successfully!", [
           {

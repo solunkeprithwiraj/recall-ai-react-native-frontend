@@ -1,17 +1,22 @@
 import axios from "axios";
-import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
+import { storage } from "./storage";
 
 // Configure base URL - adjust this to match your backend
 // For Android emulator: http://10.0.2.2:5000
 // For iOS simulator: http://localhost:5000
 // For physical devices: Use your computer's local IP (e.g., http://192.168.1.X:5000)
 // For web/production: Use environment variable EXPO_PUBLIC_API_URL
-import { Platform } from "react-native";
 
 const getApiBaseUrl = () => {
   // Use environment variable if set (for production)
   if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
+    let url = process.env.EXPO_PUBLIC_API_URL.trim();
+    // Ensure URL doesn't end with a slash
+    if (url.endsWith("/")) {
+      url = url.slice(0, -1);
+    }
+    return url;
   }
   
   if (__DEV__) {
@@ -24,8 +29,12 @@ const getApiBaseUrl = () => {
   }
   
   // Production mode - this should never be reached if EXPO_PUBLIC_API_URL is set
-  // But fallback to localhost for web
+  // Log warning if we're in production without environment variable
   if (Platform.OS === "web") {
+    console.warn(
+      "⚠️ EXPO_PUBLIC_API_URL not set! Using localhost fallback. " +
+      "Please set EXPO_PUBLIC_API_URL in your deployment environment."
+    );
     return "http://localhost:5000";
   }
   
@@ -34,7 +43,9 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
-console.log("API Base URL:", API_BASE_URL);
+console.log("🔗 API Base URL:", API_BASE_URL);
+console.log("🌐 Environment:", __DEV__ ? "development" : "production");
+console.log("📱 Platform:", Platform.OS);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -47,14 +58,14 @@ const api = axios.create({
 // Request interceptor to add auth token and user ID
 api.interceptors.request.use(
   async (config) => {
-    const token = await SecureStore.getItemAsync("authToken");
+    const token = await storage.getItem("authToken");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     // TODO: Replace with actual userId from auth token
     // For now, using a default userId that matches backend
     const userId =
-      (await SecureStore.getItemAsync("userId")) || "default-user-id";
+      (await storage.getItem("userId")) || "default-user-id";
     config.headers["x-user-id"] = userId;
     return config;
   },
@@ -69,17 +80,43 @@ api.interceptors.response.use(
   async (error) => {
     if (error.response?.status === 401) {
       // Handle unauthorized - clear token and user ID
-      await SecureStore.deleteItemAsync("authToken");
-      await SecureStore.deleteItemAsync("userId");
+      await storage.removeItem("authToken");
+      await storage.removeItem("userId");
     }
 
     // Enhanced error logging for network issues
     if (error.code === "NETWORK_ERROR" || error.message === "Network Error") {
-      console.error("Network Error:", {
+      console.error("❌ Network Error:", {
         message: "Cannot connect to backend server",
         url: error.config?.url,
         baseURL: error.config?.baseURL,
-        hint: "Make sure the backend server is running on port 5000",
+        fullURL: error.config?.baseURL + error.config?.url,
+        error: error.message,
+        hint: "Make sure the backend server is running and accessible",
+      });
+    }
+
+    // Log CORS errors specifically
+    if (
+      error.code === "ERR_NETWORK" ||
+      error.message?.includes("CORS") ||
+      (error.response?.status === 0 && !error.response?.data)
+    ) {
+      console.error("🚫 CORS Error:", {
+        message: "Cross-Origin Request Blocked",
+        url: error.config?.baseURL + error.config?.url,
+        hint: "Check that FRONTEND_URL is set in backend environment variables",
+        frontendURL: typeof window !== "undefined" ? window.location.origin : "unknown",
+      });
+    }
+
+    // Log other errors with full details
+    if (error.response) {
+      console.error("❌ API Error:", {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        url: error.config?.baseURL + error.config?.url,
+        data: error.response.data,
       });
     }
 
@@ -96,13 +133,13 @@ export const authAPI = {
   login: async (data: { email: string; password: string }) => {
     const response = await api.post("/api/auth/login", data);
     if (response.data.token) {
-      await SecureStore.setItemAsync("authToken", response.data.token);
+      await storage.setItem("authToken", response.data.token);
     }
     return response.data;
   },
   logout: async () => {
-    await SecureStore.deleteItemAsync("authToken");
-    await SecureStore.deleteItemAsync("userId");
+    await storage.removeItem("authToken");
+    await storage.removeItem("userId");
     return api.post("/api/auth/logout");
   },
   getProfile: async () => {

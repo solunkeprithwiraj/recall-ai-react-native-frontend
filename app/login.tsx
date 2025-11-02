@@ -21,7 +21,7 @@ import {
   shadows,
 } from "../constants/theme";
 import { authAPI } from "../lib/api";
-import * as SecureStore from "expo-secure-store";
+import { storage } from "../lib/storage";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -41,8 +41,8 @@ export default function LoginScreen() {
 
       if (response.token && response.user) {
         // Store token and user ID
-        await SecureStore.setItemAsync("authToken", response.token);
-        await SecureStore.setItemAsync("userId", response.user.id);
+        await storage.setItem("authToken", response.token);
+        await storage.setItem("userId", response.user.id);
 
         // Navigate to main app
         router.replace("/(tabs)");
