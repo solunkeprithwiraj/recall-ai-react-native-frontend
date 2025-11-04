@@ -87,15 +87,10 @@ export default function StudyScreen() {
         setCurrentIndex(0);
       }
       
-      // Reset counts if starting fresh (no progress)
-      if (!result.progress || result.startIndex === 0) {
-        setCorrectCount(0);
-        setTotalStudied(0);
-      } else {
-        // Resume with existing progress counts
-        setCorrectCount(result.progress.totalCorrect || 0);
-        setTotalStudied(result.progress.cardsStudied || 0);
-      }
+      // Always start session counts from 0
+      // The backend will add session totals to module progress when session ends
+      setCorrectCount(0);
+      setTotalStudied(0);
       
       if (moduleId) {
         const selectedModule = modules.find(m => m.id === moduleId);
@@ -160,15 +155,14 @@ export default function StudyScreen() {
       }
       setTotalStudied((prev) => prev + 1);
 
-      // Move to next card
+      // Move to next card - don't auto-end session on last card
+      // Let user review and click Finish button
       if (currentIndex < flashcards.length - 1) {
         setCurrentIndex((prev) => prev + 1);
         setIsFlipped(false);
         setCardStartTime(Date.now());
-      } else {
-        // End session
-        await endSession();
       }
+      // For last card, keep the card flipped and show Finish button
     } catch (error) {
       console.error("Error submitting answer:", error);
       Alert.alert("Error", "Failed to record answer. Please try again.");
@@ -216,26 +210,33 @@ export default function StudyScreen() {
       const accuracy = finalCardsStudied > 0 ? Math.round((correctCount / finalCardsStudied) * 100) : 0;
       
       // Check if module was completed (all cards studied)
-      const isModuleCompleted = selectedModuleId && currentIndex === flashcards.length - 1;
+      const isModuleCompleted = selectedModuleId && currentIndex >= flashcards.length - 1;
       
-      if (isModuleCompleted) {
+      // Navigate based on completion
+      if (isModuleCompleted && selectedModuleId) {
         showToast(
           `🎉 Module completed! ${finalCardsStudied} cards studied with ${accuracy}% accuracy!`,
           "success",
           4000
         );
+        // Redirect to module overview after completion
+        setTimeout(() => {
+          router.push({
+            pathname: "/module-detail",
+            params: { id: selectedModuleId },
+          });
+        }, 1500);
       } else {
         showToast(
           `Great work! ${finalCardsStudied} cards studied with ${accuracy}% accuracy!`,
           "success",
           3000
         );
+        // Navigate to home for incomplete sessions
+        setTimeout(() => {
+          router.push("/(tabs)/");
+        }, 1000);
       }
-      
-      // Navigate to home after a short delay
-      setTimeout(() => {
-        router.push("/(tabs)/");
-      }, isModuleCompleted ? 1500 : 1000);
     } catch (error) {
       console.error("Error ending session:", error);
     }
@@ -488,43 +489,97 @@ export default function StudyScreen() {
             {/* Next Card Button for MCQ */}
             {selectedAnswer && (
               <TouchableOpacity
-                style={[styles.mcqNextButton]}
+                style={[
+                  styles.mcqNextButton,
+                  currentIndex === flashcards.length - 1 && styles.finishButton
+                ]}
                 activeOpacity={0.7}
-                onPress={handleNext}
+                onPress={() => {
+                  if (currentIndex === flashcards.length - 1) {
+                    // Last card - finish and redirect to module overview
+                    endSession();
+                  } else {
+                    handleNext();
+                  }
+                }}
               >
-                <Text style={styles.mcqNextButtonText}>Next Card</Text>
-                <MaterialIcons name="arrow-forward" size={20} color={colors.primary} />
+                <Text style={styles.mcqNextButtonText}>
+                  {currentIndex === flashcards.length - 1 ? "Finish" : "Next Card"}
+                </Text>
+                <MaterialIcons 
+                  name={currentIndex === flashcards.length - 1 ? "check-circle" : "arrow-forward"} 
+                  size={20} 
+                  color={currentIndex === flashcards.length - 1 ? "white" : colors.primary} 
+                />
               </TouchableOpacity>
             )}
           </View>
         )}
 
         {/* Action Buttons */}
-        {isFlipped && (
+        {isFlipped && !isMCQ && (
           <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.incorrectButton]}
-              activeOpacity={0.7}
-              onPress={() => handleAnswer(false)}
-              disabled={submitting}
-            >
-              <MaterialIcons name="close" size={20} color={colors.error} />
-              <Text style={styles.incorrectText}>Incorrect</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionButton, styles.correctButton]}
-              activeOpacity={0.7}
-              onPress={() => handleAnswer(true)}
-              disabled={submitting}
-            >
-              <MaterialIcons name="check" size={20} color={colors.success} />
-              <Text style={styles.correctText}>Correct</Text>
-            </TouchableOpacity>
+            {currentIndex < flashcards.length - 1 ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.incorrectButton]}
+                  activeOpacity={0.7}
+                  onPress={() => handleAnswer(false)}
+                  disabled={submitting}
+                >
+                  <MaterialIcons name="close" size={20} color={colors.error} />
+                  <Text style={styles.incorrectText}>Incorrect</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.correctButton]}
+                  activeOpacity={0.7}
+                  onPress={() => handleAnswer(true)}
+                  disabled={submitting}
+                >
+                  <MaterialIcons name="check" size={20} color={colors.success} />
+                  <Text style={styles.correctText}>Correct</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                {/* For last card, show answer buttons AND finish button */}
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.incorrectButton]}
+                  activeOpacity={0.7}
+                  onPress={() => handleAnswer(false)}
+                  disabled={submitting}
+                >
+                  <MaterialIcons name="close" size={20} color={colors.error} />
+                  <Text style={styles.incorrectText}>Incorrect</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.correctButton]}
+                  activeOpacity={0.7}
+                  onPress={() => handleAnswer(true)}
+                  disabled={submitting}
+                >
+                  <MaterialIcons name="check" size={20} color={colors.success} />
+                  <Text style={styles.correctText}>Correct</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
+        )}
+        
+        {/* Finish Button for Last Card (after answering) */}
+        {isFlipped && !isMCQ && currentIndex === flashcards.length - 1 && selectedModuleId && totalStudied > 0 && (
+          <TouchableOpacity
+            style={styles.finishButton}
+            activeOpacity={0.7}
+            onPress={endSession}
+          >
+            <MaterialIcons name="check-circle" size={24} color="white" />
+            <Text style={styles.finishButtonText}>Finish Module</Text>
+          </TouchableOpacity>
         )}
 
         {/* Navigation Buttons */}
-        {!isFlipped && (
+        {!isFlipped && !isMCQ && (
           <View style={styles.navButtons}>
             <TouchableOpacity
               style={[styles.navButton, currentIndex === 0 && styles.navButtonDisabled]}
@@ -546,29 +601,40 @@ export default function StudyScreen() {
                 Previous
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.navButton,
-                currentIndex === flashcards.length - 1 && styles.navButtonDisabled,
-              ]}
-              activeOpacity={0.7}
-              onPress={handleNext}
-              disabled={currentIndex === flashcards.length - 1}
-            >
-              <Text
-                style={[
-                  styles.navButtonText,
-                  currentIndex === flashcards.length - 1 && styles.navButtonTextDisabled,
-                ]}
+            {currentIndex === flashcards.length - 1 ? (
+              <TouchableOpacity
+                style={[styles.navButton, styles.finishNavButton]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  // For last card, if not flipped, show message or auto-flip
+                  if (!isFlipped) {
+                    setIsFlipped(true);
+                  } else {
+                    endSession();
+                  }
+                }}
               >
-                Next
-              </Text>
-              <MaterialIcons
-                name="chevron-right"
-                size={20}
-                color={currentIndex === flashcards.length - 1 ? colors.textTertiary : colors.text}
-              />
-            </TouchableOpacity>
+                <Text style={styles.finishNavButtonText}>
+                  {selectedModuleId ? "Finish" : "Next"}
+                </Text>
+                {selectedModuleId && (
+                  <MaterialIcons name="check-circle" size={20} color={colors.success} />
+                )}
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.navButton}
+                activeOpacity={0.7}
+                onPress={handleNext}
+              >
+                <Text style={styles.navButtonText}>Next</Text>
+                <MaterialIcons
+                  name="chevron-right"
+                  size={20}
+                  color={colors.text}
+                />
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </ScrollView>
@@ -952,5 +1018,32 @@ const styles = StyleSheet.create({
   mcqNextButtonText: {
     ...typography.bodyBold,
     color: "white",
+  },
+  finishButton: {
+    ...borders.card,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+    backgroundColor: colors.success,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    ...shadows.md,
+  },
+  finishButtonText: {
+    ...typography.bodyBold,
+    color: "white",
+    fontSize: 18,
+  },
+  finishNavButton: {
+    backgroundColor: colors.success + "20",
+    borderColor: colors.success,
+    borderWidth: 2,
+  },
+  finishNavButtonText: {
+    ...typography.bodyBold,
+    color: colors.success,
+    marginHorizontal: spacing.xs,
   },
 });

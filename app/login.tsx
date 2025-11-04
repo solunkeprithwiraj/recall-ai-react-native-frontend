@@ -51,10 +51,13 @@ export default function LoginScreen() {
           showToast("Login successful! Welcome back", "success");
           // Small delay to show toast before navigation
           setTimeout(() => {
-          router.replace("/(tabs)");
+            router.replace("/(tabs)");
           }, 500);
         } else {
-          showToast("Failed to save authentication. Please try again.", "error");
+          showToast(
+            "Failed to save authentication. Please try again.",
+            "error"
+          );
         }
       }
     } catch (error: any) {
@@ -208,6 +211,9 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text,
     paddingVertical: 0,
+    ...(Platform.OS === "web"
+      ? { outlineStyle: "none" as any, outlineWidth: 0 }
+      : {}),
   },
   eyeIcon: {
     padding: spacing.xs,
